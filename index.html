@@ -6,6 +6,8 @@
   <title>微信公众号排版工具</title>
   <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/build/highlight.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github.min.css" id="hljs-theme">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -617,12 +619,49 @@
   // ── 渲染预览 ──
   function render() {
     const raw = editor.value;
-    let html = marked.parse(raw);
+
+    // 第 1 步：提取数学公式块，用占位符替换（避免 marked 破坏语法）
+    const mathBlocks = [];
+    let processed = raw;
+
+    // 匹配行间公式 $$...$$（支持多行）
+    processed = processed.replace(/\$\$([\s\S]*?)\$\$/g, (_, expr) => {
+      const idx = mathBlocks.length;
+      mathBlocks.push({ expr: expr.trim(), display: true });
+      return `@@MATH_${idx}@@`;
+    });
+
+    // 匹配行内公式 $...$（不匹配 $$ 和普通美元符号）
+    processed = processed.replace(/\$(?!\$)(.+?)(?<!\$)\$/g, (_, expr) => {
+      const idx = mathBlocks.length;
+      mathBlocks.push({ expr: expr.trim(), display: false });
+      return `@@MATH_${idx}@@`;
+    });
+
+    // 第 2 步：标准 Markdown 渲染
+    let html = marked.parse(processed);
+
+    // 第 3 步：替换占位符为 KaTeX 渲染后的 HTML
+    html = html.replace(/@@MATH_(\d+)@@/g, (_, idx) => {
+      const block = mathBlocks[parseInt(idx)];
+      if (!block) return '';
+      try {
+        return katex.renderToString(block.expr, {
+          displayMode: block.display,
+          throwOnError: false,
+          output: 'html',
+        });
+      } catch (e) {
+        return `<span style="color:#e74c3c">⚠️ ${block.expr}</span>`;
+      }
+    });
+
     // 自定义提示框替换
     html = html.replace(/<blockquote>\s*<p>:::info\s*([\s\S]*?)<\/p>\s*<\/blockquote>/g,
       '<div style="background:#e8f5ff;border-left:3px solid #5B9CF6;padding:10px 14px;margin:12px 0;border-radius:0 4px 4px 0;font-size:14px;color:#333;">💡 $1</div>');
     html = html.replace(/<blockquote>\s*<p>:::warn\s*([\s\S]*?)<\/p>\s*<\/blockquote>/g,
       '<div style="background:#fff8e0;border-left:3px solid #ffb800;padding:10px 14px;margin:12px 0;border-radius:0 4px 4px 0;font-size:14px;color:#333;">⚠️ $1</div>');
+
     previewEl.innerHTML = html;
     updateStats(raw);
     applySyntaxHighlight();
@@ -1002,6 +1041,29 @@
         ? `color:rgb(239,112,96);text-decoration:none;font-weight:bold;border-bottom:1px solid rgb(239,112,96);`
         : `color:${isVue?'#42b983':c.strong};text-decoration:none;${isVue?'font-weight:600;':''}`;
     });
+
+    // ── KaTeX 公式样式内联（保证公众号粘贴后公式显示正确） ──
+    root.querySelectorAll('.katex').forEach(el => inlineKaTeX(el));
+  }
+
+  function inlineKaTeX(root) {
+    // 将 KaTeX 内部元素的计算样式转为内联样式
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, null, false);
+    let node;
+    while (node = walker.nextNode()) {
+      const el = node;
+      const tag = el.tagName.toLowerCase();
+      // KaTeX 核心元素类型
+      if (el.classList.contains('katex') || el.classList.contains('katex-html') ||
+          el.classList.contains('katex-mathml') || tag === 'math' || tag === 'semantics' ||
+          tag === 'annotation' || tag === 'mrow' || tag === 'mi' || tag === 'mo' ||
+          tag === 'mn' || tag === 'msup' || tag === 'msub' || tag === 'mfrac' ||
+          tag === 'msqrt' || tag === 'mover' || tag === 'munder' || tag === 'mtable' ||
+          tag === 'mtr' || tag === 'mtd' || tag === 'mtext') {
+        const cs = getComputedStyle(el);
+        el.style.cssText = `font-size:${cs.fontSize};color:${cs.color};font-family:${cs.fontFamily};font-style:${cs.fontStyle};font-weight:${cs.fontWeight};line-height:${cs.lineHeight};text-align:${cs.textAlign};vertical-align:${cs.verticalAlign};padding:${cs.padding};margin:${cs.margin};`;
+      }
+    }
   }
 
   // ── 查看/复制 HTML ──
