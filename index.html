@@ -1,0 +1,1103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>微信公众号排版工具</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/build/highlight.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github.min.css" id="hljs-theme">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --primary: #07C160;
+      --primary-dark: #059f4c;
+      --bg: #f5f5f5;
+      --surface: #ffffff;
+      --border: #e0e0e0;
+      --text: #333333;
+      --text-muted: #888888;
+      --toolbar-h: 52px;
+      --sidebar-w: 240px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── 顶部工具栏 ── */
+    .toolbar {
+      height: var(--toolbar-h);
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 8px;
+      flex-shrink: 0;
+      z-index: 10;
+    }
+    .toolbar-logo {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--primary);
+      margin-right: 12px;
+      white-space: nowrap;
+    }
+    .toolbar-sep { width: 1px; height: 24px; background: var(--border); margin: 0 4px; }
+    .toolbar-group { display: flex; gap: 4px; align-items: center; }
+    .tb-btn {
+      height: 32px;
+      padding: 0 10px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      white-space: nowrap;
+      transition: all 0.15s;
+    }
+    .tb-btn:hover { background: #f0f0f0; border-color: #ccc; }
+    .tb-btn.primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .tb-btn.primary:hover { background: var(--primary-dark); }
+    .tb-btn.active { background: #e8f8ee; border-color: var(--primary); color: var(--primary); }
+    .tb-select {
+      height: 32px;
+      padding: 0 8px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--text);
+      outline: none;
+    }
+    .toolbar-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+
+    /* ── 主体布局 ── */
+    .main {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* ── 左侧面板（编辑器） ── */
+    .panel-editor {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border);
+      min-width: 0;
+    }
+    .panel-header {
+      height: 36px;
+      background: #fafafa;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      font-size: 12px;
+      color: var(--text-muted);
+      flex-shrink: 0;
+      gap: 8px;
+    }
+    .panel-header .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--primary); }
+    #editor {
+      flex: 1;
+      border: none;
+      outline: none;
+      resize: none;
+      padding: 20px;
+      font-size: 14px;
+      line-height: 1.8;
+      font-family: 'Cascadia Code', 'Fira Code', 'Source Code Pro', Consolas, monospace;
+      color: var(--text);
+      background: var(--surface);
+      overflow-y: auto;
+    }
+    .editor-footer {
+      height: 28px;
+      background: #fafafa;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      font-size: 11px;
+      color: var(--text-muted);
+      gap: 16px;
+      flex-shrink: 0;
+    }
+
+    /* ── 右侧面板（预览） ── */
+    .panel-preview {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+    .preview-scroll {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      justify-content: center;
+      background: #e8e8e8;
+      padding: 24px 16px;
+    }
+    /* 模拟手机宽度 */
+    .preview-phone {
+      width: 375px;
+      min-height: 100%;
+      background: var(--surface);
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+    }
+    .phone-header {
+      height: 44px;
+      background: #f7f7f7;
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      border-bottom: 1px solid #e8e8e8;
+      font-size: 15px;
+      font-weight: 600;
+      color: #111;
+    }
+    #preview-content {
+      padding: 20px 16px 40px;
+    }
+
+    /* ── 主题：公众号文章样式 ── */
+    /* 默认主题（清新绿） */
+    .theme-default #preview-content h1 { font-size: 22px; font-weight: 700; color: #111; margin: 0 0 16px; line-height: 1.4; }
+    .theme-default #preview-content h2 { font-size: 17px; font-weight: 700; color: #111; margin: 24px 0 10px; padding-left: 10px; border-left: 3px solid var(--primary); }
+    .theme-default #preview-content h3 { font-size: 15px; font-weight: 700; color: #333; margin: 20px 0 8px; }
+    .theme-default #preview-content p { font-size: 15px; line-height: 1.9; color: #333; margin: 0 0 12px; }
+    .theme-default #preview-content strong { color: var(--primary); font-weight: 700; }
+    .theme-default #preview-content em { color: #555; }
+    .theme-default #preview-content a { color: var(--primary); text-decoration: none; }
+    .theme-default #preview-content blockquote { border-left: 3px solid var(--primary); background: #f0faf4; padding: 10px 14px; margin: 12px 0; border-radius: 0 4px 4px 0; color: #555; font-size: 14px; }
+    .theme-default #preview-content code { background: #f0f0f0; padding: 2px 5px; border-radius: 3px; font-size: 13px; color: #e83e5a; font-family: Consolas, monospace; }
+    .theme-default #preview-content pre { background: #f6f8fa; border-radius: 6px; padding: 14px; overflow-x: auto; margin: 12px 0; }
+    .theme-default #preview-content pre code { background: none; padding: 0; color: inherit; font-size: 13px; }
+    .theme-default #preview-content ul, .theme-default #preview-content ol { padding-left: 24px; margin: 8px 0 12px; }
+    .theme-default #preview-content li { font-size: 15px; line-height: 1.9; color: #333; margin-bottom: 4px; }
+    .theme-default #preview-content img { max-width: 100%; border-radius: 6px; display: block; margin: 12px auto; }
+    .theme-default #preview-content hr { border: none; border-top: 1px solid #eee; margin: 20px 0; }
+    .theme-default #preview-content table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 12px 0; }
+    .theme-default #preview-content th { background: var(--primary); color: #fff; padding: 8px 10px; text-align: left; }
+    .theme-default #preview-content td { border-bottom: 1px solid #eee; padding: 8px 10px; color: #333; }
+    .theme-default #preview-content tr:nth-child(even) td { background: #f9f9f9; }
+
+    /* 极客黑主题 */
+    .theme-dark .preview-phone { background: #1a1a1a; }
+    .theme-dark .phone-header { background: #111; border-color: #333; color: #eee; }
+    .theme-dark #preview-content h1 { font-size: 22px; font-weight: 700; color: #fff; margin: 0 0 16px; }
+    .theme-dark #preview-content h2 { font-size: 17px; font-weight: 700; color: #fff; margin: 24px 0 10px; padding-left: 10px; border-left: 3px solid #5B9CF6; }
+    .theme-dark #preview-content h3 { font-size: 15px; font-weight: 700; color: #ddd; margin: 20px 0 8px; }
+    .theme-dark #preview-content p { font-size: 15px; line-height: 1.9; color: #ccc; margin: 0 0 12px; }
+    .theme-dark #preview-content strong { color: #5B9CF6; font-weight: 700; }
+    .theme-dark #preview-content a { color: #5B9CF6; }
+    .theme-dark #preview-content blockquote { border-left: 3px solid #5B9CF6; background: #252525; padding: 10px 14px; margin: 12px 0; color: #aaa; font-size: 14px; }
+    .theme-dark #preview-content code { background: #2d2d2d; padding: 2px 5px; border-radius: 3px; font-size: 13px; color: #e06c75; font-family: Consolas, monospace; }
+    .theme-dark #preview-content pre { background: #2d2d2d; border-radius: 6px; padding: 14px; overflow-x: auto; margin: 12px 0; }
+    .theme-dark #preview-content pre code { background: none; padding: 0; color: #abb2bf; }
+    .theme-dark #preview-content ul, .theme-dark #preview-content ol { padding-left: 24px; margin: 8px 0 12px; }
+    .theme-dark #preview-content li { font-size: 15px; line-height: 1.9; color: #ccc; margin-bottom: 4px; }
+    .theme-dark #preview-content img { max-width: 100%; border-radius: 6px; display: block; margin: 12px auto; }
+    .theme-dark #preview-content hr { border: none; border-top: 1px solid #333; margin: 20px 0; }
+    .theme-dark #preview-content table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 12px 0; }
+    .theme-dark #preview-content th { background: #5B9CF6; color: #fff; padding: 8px 10px; text-align: left; }
+    .theme-dark #preview-content td { border-bottom: 1px solid #333; padding: 8px 10px; color: #ccc; }
+
+    /* 商务蓝主题 */
+    .theme-blue .preview-phone { background: #fff; }
+    .theme-blue #preview-content h1 { font-size: 22px; font-weight: 700; color: #1a3c6e; margin: 0 0 16px; }
+    .theme-blue #preview-content h2 { font-size: 17px; font-weight: 700; color: #1a3c6e; margin: 24px 0 10px; padding: 6px 12px; background: #EBF2FF; border-radius: 4px; }
+    .theme-blue #preview-content h3 { font-size: 15px; font-weight: 700; color: #2255a4; margin: 20px 0 8px; }
+    .theme-blue #preview-content p { font-size: 15px; line-height: 1.9; color: #444; margin: 0 0 12px; }
+    .theme-blue #preview-content strong { color: #2255a4; font-weight: 700; }
+    .theme-blue #preview-content a { color: #2255a4; }
+    .theme-blue #preview-content blockquote { border-left: 3px solid #2255a4; background: #EBF2FF; padding: 10px 14px; margin: 12px 0; color: #555; font-size: 14px; }
+    .theme-blue #preview-content code { background: #EBF2FF; padding: 2px 5px; border-radius: 3px; font-size: 13px; color: #c7254e; font-family: Consolas, monospace; }
+    .theme-blue #preview-content pre { background: #f0f5ff; border-radius: 6px; padding: 14px; overflow-x: auto; margin: 12px 0; }
+    .theme-blue #preview-content pre code { background: none; padding: 0; color: inherit; }
+    .theme-blue #preview-content ul, .theme-blue #preview-content ol { padding-left: 24px; margin: 8px 0 12px; }
+    .theme-blue #preview-content li { font-size: 15px; line-height: 1.9; color: #444; margin-bottom: 4px; }
+    .theme-blue #preview-content img { max-width: 100%; border-radius: 6px; display: block; margin: 12px auto; }
+    .theme-blue #preview-content hr { border: none; border-top: 1px solid #dde4f0; margin: 20px 0; }
+    .theme-blue #preview-content table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 12px 0; }
+    .theme-blue #preview-content th { background: #2255a4; color: #fff; padding: 8px 10px; text-align: left; }
+    .theme-blue #preview-content td { border-bottom: 1px solid #dde4f0; padding: 8px 10px; color: #444; }
+    .theme-blue #preview-content tr:nth-child(even) td { background: #f5f8ff; }
+
+    /* 橙色活力主题 */
+    .theme-orange #preview-content h1 { font-size: 22px; font-weight: 700; color: #111; margin: 0 0 16px; }
+    .theme-orange #preview-content h2 { font-size: 17px; font-weight: 700; color: #111; margin: 24px 0 10px; padding-left: 10px; border-left: 4px solid #FF6B35; }
+    .theme-orange #preview-content h3 { font-size: 15px; font-weight: 700; color: #333; margin: 20px 0 8px; }
+    .theme-orange #preview-content p { font-size: 15px; line-height: 1.9; color: #333; margin: 0 0 12px; }
+    .theme-orange #preview-content strong { color: #FF6B35; font-weight: 700; }
+    .theme-orange #preview-content a { color: #FF6B35; }
+    .theme-orange #preview-content blockquote { border-left: 4px solid #FF6B35; background: #FFF5F0; padding: 10px 14px; margin: 12px 0; color: #666; font-size: 14px; }
+    .theme-orange #preview-content code { background: #fff3ee; padding: 2px 5px; border-radius: 3px; font-size: 13px; color: #FF6B35; font-family: Consolas, monospace; }
+    .theme-orange #preview-content pre { background: #fff8f5; border-radius: 6px; padding: 14px; overflow-x: auto; margin: 12px 0; border: 1px solid #ffe5d8; }
+    .theme-orange #preview-content pre code { background: none; padding: 0; color: #555; }
+    .theme-orange #preview-content ul, .theme-orange #preview-content ol { padding-left: 24px; margin: 8px 0 12px; }
+    .theme-orange #preview-content li { font-size: 15px; line-height: 1.9; color: #333; margin-bottom: 4px; }
+    .theme-orange #preview-content img { max-width: 100%; border-radius: 6px; display: block; margin: 12px auto; }
+    .theme-orange #preview-content hr { border: none; border-top: 1px solid #ffe5d8; margin: 20px 0; }
+    .theme-orange #preview-content table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 12px 0; }
+    .theme-orange #preview-content th { background: #FF6B35; color: #fff; padding: 8px 10px; text-align: left; }
+    .theme-orange #preview-content td { border-bottom: 1px solid #ffe5d8; padding: 8px 10px; color: #333; }
+    .theme-orange #preview-content tr:nth-child(even) td { background: #fff8f5; }
+
+    /* Vue 亮色主题（typora-vue） */
+    .theme-vue #preview-content { font-family: 'Source Sans Pro', 'PingFang SC', 'Microsoft YaHei', sans-serif; color: #34495e; line-height: 1.7; }
+    .theme-vue #preview-content h1 { font-size: 22px; font-weight: 700; color: #2c3e50; margin: 0 0 16px; padding-bottom: 6px; line-height: 1.3; }
+    .theme-vue #preview-content h2 { font-size: 19px; font-weight: 700; color: #2c3e50; margin: 28px 0 12px; padding-bottom: 8px; border-bottom: 1px solid #ddd; }
+    .theme-vue #preview-content h3 { font-size: 16px; font-weight: 700; color: #2c3e50; margin: 20px 0 8px; }
+    .theme-vue #preview-content p { font-size: 15px; line-height: 1.75; color: #34495e; margin: 0 0 12px; word-spacing: 0.03em; }
+    .theme-vue #preview-content strong { color: #2c3e50; font-weight: 700; }
+    .theme-vue #preview-content em { color: #555; font-style: italic; padding: 0 2px; }
+    .theme-vue #preview-content a { color: #42b983; font-weight: 600; text-decoration: none; }
+    .theme-vue #preview-content blockquote { border-left: 4px solid #42b983; background: rgba(66,185,131,0.08); padding: 10px 15px; margin: 12px 0; color: #777; font-size: 14px; }
+    .theme-vue #preview-content code { background: #f8f8f8; padding: 2px 5px; border-radius: 2px; font-size: 13px; color: #e96900; font-family: 'Fira Code', Consolas, monospace; }
+    .theme-vue #preview-content pre { background: #f8f8f8; border: 1px solid #f4f4f4; border-radius: 3px; padding: 14px; overflow-x: auto; margin: 12px 0; }
+    .theme-vue #preview-content pre code { background: none; padding: 0; color: inherit; font-size: 13px; }
+    .theme-vue #preview-content ul, .theme-vue #preview-content ol { padding-left: 28px; margin: 8px 0 12px; }
+    .theme-vue #preview-content li { font-size: 15px; line-height: 1.75; color: #34495e; margin-bottom: 4px; }
+    .theme-vue #preview-content img { max-width: 100%; border-radius: 4px; display: block; margin: 12px auto; }
+    .theme-vue #preview-content hr { height: 2px; background: #e7e7e7; border: none; margin: 20px 0; }
+    .theme-vue #preview-content table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 12px 0; word-break: initial; }
+    .theme-vue #preview-content th { background: #f2f2f2; font-weight: 700; border: 1px solid #dfe2e5; padding: 6px 13px; text-align: left; color: #34495e; }
+    .theme-vue #preview-content td { border: 1px solid #dfe2e5; padding: 6px 13px; color: #34495e; }
+    .theme-vue #preview-content tr:nth-child(even) td, .theme-vue #preview-content thead { background: #fafafa; }
+
+    /* Vue 暗色主题（typora-vue-dark） */
+    .theme-vue-dark .preview-phone { background: #1f1f1f; }
+    .theme-vue-dark .phone-header { background: #161616; border-color: #2a2a2a; color: #eee; }
+    .theme-vue-dark #preview-content { font-family: 'Source Sans Pro', 'PingFang SC', 'Microsoft YaHei', sans-serif; color: #aaaaaa; line-height: 1.7; background: #1f1f1f; }
+    .theme-vue-dark #preview-content h1 { font-size: 22px; font-weight: 700; color: #eeeeee; margin: 0 0 16px; padding-bottom: 6px; line-height: 1.3; }
+    .theme-vue-dark #preview-content h2 { font-size: 19px; font-weight: 700; color: #eeeeee; margin: 28px 0 12px; padding-bottom: 8px; border-bottom: 2px solid hsl(0,0%,20%); }
+    .theme-vue-dark #preview-content h3 { font-size: 16px; font-weight: 700; color: #dddddd; margin: 20px 0 8px; }
+    .theme-vue-dark #preview-content p { font-size: 15px; line-height: 1.75; color: #aaaaaa; margin: 0 0 12px; word-spacing: 0.03em; }
+    .theme-vue-dark #preview-content strong { color: #42b983; font-weight: 700; }
+    .theme-vue-dark #preview-content em { color: #ccc; font-style: italic; }
+    .theme-vue-dark #preview-content a { color: #42b983; font-weight: 600; text-decoration: none; }
+    .theme-vue-dark #preview-content blockquote { border-left: 4px solid #42b983; background: rgba(66,185,131,0.08); padding: 10px 15px; margin: 12px 0; color: #eeeeee; font-size: 14px; }
+    .theme-vue-dark #preview-content code { background: rgba(0,0,0,0.2); padding: 2px 5px; border-radius: 2px; font-size: 13px; color: #f3b37f; font-family: 'Fira Code', Consolas, monospace; font-weight: bold; }
+    .theme-vue-dark #preview-content pre { background: hsl(0,0%,10%); border: 1px solid hsl(0,0%,11%); border-radius: 3px; padding: 14px; overflow-x: auto; margin: 12px 0; }
+    .theme-vue-dark #preview-content pre code { background: none; padding: 0; color: hsl(0,0%,78%); font-weight: bold; }
+    .theme-vue-dark #preview-content ul, .theme-vue-dark #preview-content ol { padding-left: 28px; margin: 8px 0 12px; }
+    .theme-vue-dark #preview-content li { font-size: 15px; line-height: 1.75; color: #aaaaaa; margin-bottom: 4px; }
+    .theme-vue-dark #preview-content img { max-width: 100%; border-radius: 4px; display: block; margin: 12px auto; }
+    .theme-vue-dark #preview-content hr { height: 2px; background: hsl(0,0%,18%); border: none; margin: 20px 0; }
+    .theme-vue-dark #preview-content table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 12px 0; font-family: 'Fira Code', Consolas, monospace; }
+    .theme-vue-dark #preview-content th { background: hsl(0,0%,9%); font-weight: 700; border: transparent; padding: 6px 13px; text-align: left; color: #eeeeee; }
+    .theme-vue-dark #preview-content td { border: 2px solid #1d1d1d; padding: 6px 13px; color: #aaaaaa; }
+    .theme-vue-dark #preview-content tr:nth-child(even) td, .theme-vue-dark #preview-content thead { background: hsl(0,0%,10%); }
+
+    /* OrangeHeart 主题 */
+    .theme-orangeheart #preview-content { font-family: Optima-Regular, Optima, PingFangSC-light, 'PingFang SC', Cambria, Cochin, Georgia, Times, serif; color: #000; line-height: 1.6; word-break: break-word; }
+    .theme-orangeheart #preview-content h1 { font-size: 24px; font-weight: bold; color: #000; margin: 1.2em 0 1em; }
+    .theme-orangeheart #preview-content h2 { font-size: 21px; font-weight: bold; color: #000; margin: 1.2em 0 1em; padding: 0; border-bottom: 2px solid rgb(239, 112, 96); position: relative; display: inline-block; max-width: 100%; }
+    .theme-orangeheart #preview-content h2::after { display: inline-block; content: ""; vertical-align: bottom; border-bottom: 20px solid #efebe9; border-right: 20px solid transparent; margin-left: 0; }
+    .theme-orangeheart #preview-content h3 { font-size: 21px; font-weight: bold; color: #000; margin: 1.2em 0 1em; }
+    .theme-orangeheart #preview-content h4 { font-size: 19px; font-weight: bold; color: #000; margin: 1.2em 0 1em; }
+    .theme-orangeheart #preview-content p { font-size: 16px; line-height: 1.6; color: #000; margin: 0; padding: 8px 0; }
+    .theme-orangeheart #preview-content strong { color: rgb(239, 112, 96); font-weight: bold; }
+    .theme-orangeheart #preview-content em { color: #555; }
+    .theme-orangeheart #preview-content a { color: rgb(239, 112, 96); text-decoration: none; font-weight: bold; border-bottom: 1px solid rgb(239, 112, 96); }
+    .theme-orangeheart #preview-content blockquote { border-left: 3px solid rgb(239, 112, 96); background: #fff9f9; padding: 10px 10px 10px 20px; margin: 20px 0; color: #6a737d; font-size: 14px; }
+    .theme-orangeheart #preview-content code { background: rgba(27,31,35,.05); padding: 2px 4px; border-radius: 4px; margin: 0 2px; font-size: 14px; color: rgb(239, 112, 96); font-family: 'Operator Mono', Consolas, Monaco, Menlo, monospace; }
+    .theme-orangeheart #preview-content pre { background: #292d3e; border-radius: 4px; padding: 14px; overflow-x: auto; margin: 12px 0; }
+    .theme-orangeheart #preview-content pre code { background: none; padding: 0; color: #a6accd; font-size: 13px; margin: 0; }
+    .theme-orangeheart #preview-content ul, .theme-orangeheart #preview-content ol { padding-left: 25px; margin: 8px 0; color: #000; }
+    .theme-orangeheart #preview-content li { font-size: 16px; line-height: 1.7; color: #000; margin: 5px 0; font-weight: 500; }
+    .theme-orangeheart #preview-content img { max-width: 100%; display: block; margin: 0 auto; }
+    .theme-orangeheart #preview-content hr { border: none; border-top: 1px solid #ddd; margin: 20px 0; }
+    .theme-orangeheart #preview-content table { width: 100%; border-collapse: collapse; font-size: 16px; margin: 12px 0; text-align: left; }
+    .theme-orangeheart #preview-content th { border: 1px solid #ccc; background: #f0f0f0; font-weight: bold; padding: 5px 10px; color: #000; text-align: left; }
+    .theme-orangeheart #preview-content td { border: 1px solid #ccc; padding: 5px 10px; color: #000; text-align: left; }
+    .theme-orangeheart #preview-content tr:nth-child(even) td { background: #F8F8F8; }
+
+    /* ── 侧边栏（格式工具） ── */
+    .sidebar {
+      width: var(--sidebar-w);
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      overflow-y: auto;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .sidebar-section { padding: 14px 12px 8px; }
+    .sidebar-title { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+    .sidebar-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      padding: 7px 10px;
+      background: none;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--text);
+      text-align: left;
+      transition: background 0.1s;
+      margin-bottom: 2px;
+    }
+    .sidebar-btn:hover { background: #f0f0f0; }
+    .sidebar-btn .sb-icon { font-size: 15px; width: 20px; text-align: center; }
+    .sidebar-divider { height: 1px; background: var(--border); margin: 4px 12px; }
+
+    /* ── 通知提示 ── */
+    .toast {
+      position: fixed;
+      bottom: 40px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: #333;
+      color: #fff;
+      padding: 10px 20px;
+      border-radius: 20px;
+      font-size: 14px;
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.3s;
+      z-index: 9999;
+      white-space: nowrap;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ── 字数统计 ── */
+    .count-badge {
+      background: #f0f0f0;
+      border-radius: 10px;
+      padding: 2px 8px;
+      font-size: 11px;
+    }
+
+    /* ── 对话框 ── */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 999;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.show { display: flex; }
+    .modal {
+      background: #fff;
+      border-radius: 12px;
+      padding: 24px;
+      min-width: 420px;
+      max-width: 560px;
+      width: 90%;
+    }
+    .modal h3 { font-size: 16px; font-weight: 700; margin-bottom: 16px; }
+    .modal textarea {
+      width: 100%;
+      height: 300px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+      font-size: 12px;
+      font-family: Consolas, monospace;
+      resize: none;
+      outline: none;
+      color: #333;
+      line-height: 1.6;
+    }
+    .modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+
+    /* ── 快捷键提示 ── */
+    .shortcut { display: flex; justify-content: space-between; align-items: center; padding: 4px 10px; font-size: 12px; color: var(--text-muted); }
+    .shortcut kbd { background: #f0f0f0; border: 1px solid #ddd; border-radius: 3px; padding: 1px 5px; font-size: 11px; font-family: inherit; }
+
+    /* ── 全局预览宽度切换 ── */
+    .preview-wide .preview-phone { width: 540px; }
+    .preview-narrow .preview-phone { width: 320px; }
+
+    /* ── 滚动条 ── */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #aaa; }
+  </style>
+</head>
+<body>
+
+<!-- 顶部工具栏 -->
+<div class="toolbar">
+  <div class="toolbar-logo">✦ 公众号排版</div>
+  <div class="toolbar-sep"></div>
+  <div class="toolbar-group">
+    <button class="tb-btn" onclick="insertMd('**', '**')" title="加粗 Ctrl+B">𝐁</button>
+    <button class="tb-btn" onclick="insertMd('*', '*')" title="斜体 Ctrl+I"><i>I</i></button>
+    <button class="tb-btn" onclick="insertMd('~~', '~~')" title="删除线">S̶</button>
+    <button class="tb-btn" onclick="insertInline('`', '`')" title="行内代码">&lt;/&gt;</button>
+  </div>
+  <div class="toolbar-sep"></div>
+  <div class="toolbar-group">
+    <button class="tb-btn" onclick="insertHeading(1)">H1</button>
+    <button class="tb-btn" onclick="insertHeading(2)">H2</button>
+    <button class="tb-btn" onclick="insertHeading(3)">H3</button>
+  </div>
+  <div class="toolbar-sep"></div>
+  <div class="toolbar-group">
+    <button class="tb-btn" onclick="insertBlock('- ')" title="无序列表">≡ 列表</button>
+    <button class="tb-btn" onclick="insertBlock('1. ')" title="有序列表">① 有序</button>
+    <button class="tb-btn" onclick="insertBlock('> ')" title="引用">❝ 引用</button>
+    <button class="tb-btn" onclick="insertCode()" title="代码块">⎇ 代码</button>
+  </div>
+  <div class="toolbar-sep"></div>
+  <div class="toolbar-group">
+    <select class="tb-select" id="themeSelect" onchange="changeTheme(this.value)" title="切换主题">
+      <option value="default">🌿 清新绿</option>
+      <option value="dark">🌑 极客黑</option>
+      <option value="blue">💼 商务蓝</option>
+      <option value="orange">🔥 橙色活力</option>
+      <option value="vue">🌿 Vue 文档风</option>
+      <option value="vue-dark">🖤 Vue 暗黑风</option>
+      <option value="orangeheart">🧡 OrangeHeart</option>
+    </select>
+    <select class="tb-select" id="fontSizeSelect" onchange="changeFontSize(this.value)" title="字体大小">
+      <option value="14">14px</option>
+      <option value="15" selected>15px</option>
+      <option value="16">16px</option>
+      <option value="17">17px</option>
+    </select>
+  </div>
+  <div class="toolbar-right">
+    <button class="tb-btn" onclick="loadTemplate()" title="加载示例模板">📄 模板</button>
+    <button class="tb-btn" onclick="showExportModal()" title="查看/复制 HTML">🔗 导出HTML</button>
+    <button class="tb-btn primary" onclick="copyForWechat()" title="一键复制，粘贴到公众号编辑器">📋 复制到公众号</button>
+  </div>
+</div>
+
+<!-- 主体 -->
+<div class="main">
+  <!-- 编辑器面板 -->
+  <div class="panel-editor">
+    <div class="panel-header">
+      <div class="dot"></div>
+      <span>Markdown 编辑器</span>
+      <span style="margin-left:auto;font-size:11px;">支持标准 Markdown 语法</span>
+    </div>
+    <textarea id="editor" spellcheck="false" placeholder="开始输入 Markdown 内容...
+
+支持：标题 / 加粗 / 斜体 / 列表 / 引用 / 代码 / 表格 / 图片等
+
+快捷键：Ctrl+B 加粗  Ctrl+I 斜体  Ctrl+K 链接"></textarea>
+    <div class="editor-footer">
+      <span>字符：<span class="count-badge" id="charCount">0</span></span>
+      <span>词数：<span class="count-badge" id="wordCount">0</span></span>
+      <span>段落：<span class="count-badge" id="paraCount">0</span></span>
+    </div>
+  </div>
+
+  <!-- 预览面板 -->
+  <div class="panel-preview">
+    <div class="panel-header">
+      <div class="dot" style="background:#5B9CF6;"></div>
+      <span>预览效果</span>
+      <div style="margin-left:auto;display:flex;gap:6px;">
+        <button class="tb-btn" onclick="toggleWidth('narrow')" id="btn-narrow" style="height:26px;padding:0 8px;font-size:11px;">窄</button>
+        <button class="tb-btn active" onclick="toggleWidth('normal')" id="btn-normal" style="height:26px;padding:0 8px;font-size:11px;">标准</button>
+        <button class="tb-btn" onclick="toggleWidth('wide')" id="btn-wide" style="height:26px;padding:0 8px;font-size:11px;">宽</button>
+      </div>
+    </div>
+    <div class="preview-scroll" id="previewScroll">
+      <div id="theme-wrapper" class="theme-default">
+        <div class="preview-phone">
+          <div class="phone-header">公众号文章预览</div>
+          <div id="preview-content"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右侧功能侧边栏 -->
+  <div class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-title">插入元素</div>
+      <button class="sidebar-btn" onclick="insertTable()">
+        <span class="sb-icon">⊞</span> 表格
+      </button>
+      <button class="sidebar-btn" onclick="insertImage()">
+        <span class="sb-icon">🖼</span> 图片链接
+      </button>
+      <button class="sidebar-btn" onclick="insertLink()">
+        <span class="sb-icon">🔗</span> 超链接
+      </button>
+      <button class="sidebar-btn" onclick="insertHr()">
+        <span class="sb-icon">─</span> 分割线
+      </button>
+      <button class="sidebar-btn" onclick="insertTip('info')">
+        <span class="sb-icon">💡</span> 提示框
+      </button>
+      <button class="sidebar-btn" onclick="insertTip('warn')">
+        <span class="sb-icon">⚠️</span> 警告框
+      </button>
+    </div>
+    <div class="sidebar-divider"></div>
+    <div class="sidebar-section">
+      <div class="sidebar-title">快捷操作</div>
+      <button class="sidebar-btn" onclick="clearEditor()">
+        <span class="sb-icon">🗑</span> 清空内容
+      </button>
+      <button class="sidebar-btn" onclick="saveLocal()">
+        <span class="sb-icon">💾</span> 保存到本地
+      </button>
+      <button class="sidebar-btn" onclick="loadLocal()">
+        <span class="sb-icon">📂</span> 加载本地存档
+      </button>
+    </div>
+    <div class="sidebar-divider"></div>
+    <div class="sidebar-section">
+      <div class="sidebar-title">快捷键</div>
+      <div class="shortcut"><span>加粗</span><kbd>Ctrl+B</kbd></div>
+      <div class="shortcut"><span>斜体</span><kbd>Ctrl+I</kbd></div>
+      <div class="shortcut"><span>链接</span><kbd>Ctrl+K</kbd></div>
+      <div class="shortcut"><span>撤销</span><kbd>Ctrl+Z</kbd></div>
+      <div class="shortcut"><span>预览同步</span><kbd>自动</kbd></div>
+    </div>
+  </div>
+</div>
+
+<!-- 导出 HTML 对话框 -->
+<div class="modal-overlay" id="exportModal">
+  <div class="modal">
+    <h3>导出 HTML 代码</h3>
+    <textarea id="exportHtml" readonly placeholder="HTML 代码将显示在这里..."></textarea>
+    <div class="modal-footer">
+      <button class="tb-btn" onclick="closeModal()">关闭</button>
+      <button class="tb-btn primary" onclick="copyExportHtml()">📋 复制 HTML</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast 提示 -->
+<div class="toast" id="toast"></div>
+
+<script>
+  const editor = document.getElementById('editor');
+  const previewEl = document.getElementById('preview-content');
+  const previewScroll = document.getElementById('previewScroll');
+  let currentTheme = 'default';
+  let globalFontSize = 15;
+
+  // ── Marked 配置 ──
+  marked.setOptions({
+    breaks: true,
+    gfm: true,
+    highlight: function(code, lang) {
+      if (lang && hljs.getLanguage(lang)) {
+        return hljs.highlight(code, { language: lang }).value;
+      }
+      return hljs.highlightAuto(code).value;
+    }
+  });
+
+  // ── 渲染预览 ──
+  function render() {
+    const raw = editor.value;
+    let html = marked.parse(raw);
+    // 自定义提示框替换
+    html = html.replace(/<blockquote>\s*<p>:::info\s*([\s\S]*?)<\/p>\s*<\/blockquote>/g,
+      '<div style="background:#e8f5ff;border-left:3px solid #5B9CF6;padding:10px 14px;margin:12px 0;border-radius:0 4px 4px 0;font-size:14px;color:#333;">💡 $1</div>');
+    html = html.replace(/<blockquote>\s*<p>:::warn\s*([\s\S]*?)<\/p>\s*<\/blockquote>/g,
+      '<div style="background:#fff8e0;border-left:3px solid #ffb800;padding:10px 14px;margin:12px 0;border-radius:0 4px 4px 0;font-size:14px;color:#333;">⚠️ $1</div>');
+    previewEl.innerHTML = html;
+    updateStats(raw);
+    applySyntaxHighlight();
+  }
+
+  function applySyntaxHighlight() {
+    previewEl.querySelectorAll('pre code').forEach(el => {
+      if (!el.dataset.highlighted) hljs.highlightElement(el);
+    });
+  }
+
+  function updateStats(txt) {
+    document.getElementById('charCount').textContent = txt.length;
+    const words = txt.trim() ? txt.trim().split(/[\s\n]+/).length : 0;
+    document.getElementById('wordCount').textContent = words;
+    const paras = txt.split(/\n\n+/).filter(p => p.trim()).length;
+    document.getElementById('paraCount').textContent = paras;
+  }
+
+  // ── 编辑器输入监听 ──
+  let renderTimer;
+  editor.addEventListener('input', () => {
+    clearTimeout(renderTimer);
+    renderTimer = setTimeout(render, 150);
+  });
+
+  // ── 滚动同步 ──
+  editor.addEventListener('scroll', () => {
+    const ratio = editor.scrollTop / (editor.scrollHeight - editor.clientHeight || 1);
+    const ph = previewScroll;
+    ph.scrollTop = ratio * (ph.scrollHeight - ph.clientHeight);
+  });
+
+  // ── 主题切换 ──
+  function changeTheme(theme) {
+    currentTheme = theme;
+    const wrapper = document.getElementById('theme-wrapper');
+    wrapper.className = `theme-${theme}`;
+    // 暗色主题换 hljs 样式
+    const hljsLink = document.getElementById('hljs-theme');
+    if (theme === 'dark' || theme === 'vue-dark' || theme === 'orangeheart') {
+      hljsLink.href = 'https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/atom-one-dark.min.css';
+    } else {
+      hljsLink.href = 'https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github.min.css';
+    }
+    previewEl.querySelectorAll('code[data-highlighted]').forEach(el => delete el.dataset.highlighted);
+    render();
+  }
+
+  // ── 字号切换 ──
+  function changeFontSize(size) {
+    globalFontSize = parseInt(size);
+    const base = globalFontSize;
+    const style = document.createElement('style');
+    style.id = 'custom-font-size';
+    const old = document.getElementById('custom-font-size');
+    if (old) old.remove();
+    style.textContent = `
+      #preview-content p, #preview-content li { font-size: ${base}px !important; }
+      #preview-content h1 { font-size: ${base + 7}px !important; }
+      #preview-content h2 { font-size: ${base + 2}px !important; }
+      #preview-content h3 { font-size: ${base}px !important; }
+    `;
+    document.head.appendChild(style);
+  }
+
+  // ── 宽度切换 ──
+  function toggleWidth(mode) {
+    const scroll = document.getElementById('previewScroll');
+    scroll.className = 'preview-scroll';
+    if (mode === 'wide') scroll.classList.add('preview-wide');
+    if (mode === 'narrow') scroll.classList.add('preview-narrow');
+    ['narrow','normal','wide'].forEach(m => {
+      const btn = document.getElementById(`btn-${m}`);
+      btn.className = 'tb-btn' + (m === mode ? ' active' : '');
+    });
+  }
+
+  // ── 插入 Markdown 工具函数 ──
+  function getSelection() {
+    const start = editor.selectionStart, end = editor.selectionEnd;
+    return { start, end, text: editor.value.substring(start, end) };
+  }
+  function replaceSelection(newText, cursorOffset) {
+    const { start, end } = getSelection();
+    const before = editor.value.substring(0, start);
+    const after = editor.value.substring(end);
+    editor.value = before + newText + after;
+    const pos = start + (cursorOffset !== undefined ? cursorOffset : newText.length);
+    editor.setSelectionRange(pos, pos);
+    editor.focus();
+    render();
+  }
+  function insertMd(prefix, suffix) {
+    const { text } = getSelection();
+    if (text) {
+      replaceSelection(prefix + text + suffix);
+    } else {
+      const placeholder = '文字';
+      replaceSelection(prefix + placeholder + suffix, prefix.length);
+      const { start } = getSelection();
+      editor.setSelectionRange(start - placeholder.length - suffix.length, start - suffix.length);
+    }
+  }
+  function insertInline(prefix, suffix) { insertMd(prefix, suffix); }
+  function insertHeading(level) {
+    const prefix = '#'.repeat(level) + ' ';
+    const { start, end } = getSelection();
+    const lineStart = editor.value.lastIndexOf('\n', start - 1) + 1;
+    const line = editor.value.substring(lineStart, end || start);
+    const cleanLine = line.replace(/^#+\s*/, '');
+    const before = editor.value.substring(0, lineStart);
+    const after = editor.value.substring(lineStart + line.length);
+    editor.value = before + prefix + cleanLine + after;
+    editor.setSelectionRange(lineStart + prefix.length + cleanLine.length, lineStart + prefix.length + cleanLine.length);
+    editor.focus(); render();
+  }
+  function insertBlock(prefix) {
+    const { start } = getSelection();
+    const lineStart = editor.value.lastIndexOf('\n', start - 1) + 1;
+    const before = editor.value.substring(0, lineStart);
+    const after = editor.value.substring(lineStart);
+    editor.value = before + prefix + after;
+    const newPos = lineStart + prefix.length;
+    editor.setSelectionRange(newPos, newPos);
+    editor.focus(); render();
+  }
+  function insertCode() {
+    const { text } = getSelection();
+    const snippet = text || '// 代码内容';
+    replaceSelection('\n```javascript\n' + snippet + '\n```\n');
+  }
+  function insertTable() {
+    const tbl = '\n| 标题一 | 标题二 | 标题三 |\n|--------|--------|--------|\n| 内容 | 内容 | 内容 |\n| 内容 | 内容 | 内容 |\n';
+    replaceSelection(tbl);
+  }
+  function insertImage() {
+    const url = prompt('图片 URL：', 'https://');
+    if (!url) return;
+    const alt = prompt('图片描述：', '图片');
+    replaceSelection(`\n![${alt || '图片'}](${url})\n`);
+  }
+  function insertLink() {
+    const { text } = getSelection();
+    const url = prompt('链接 URL：', 'https://');
+    if (!url) return;
+    const linkText = text || prompt('链接文字：', '点击查看') || '链接';
+    replaceSelection(`[${linkText}](${url})`);
+  }
+  function insertHr() { replaceSelection('\n\n---\n\n'); }
+  function insertTip(type) {
+    if (type === 'info') replaceSelection('\n> :::info 这里是提示内容\n');
+    else replaceSelection('\n> :::warn 这里是警告内容\n');
+  }
+
+  // ── 键盘快捷键 ──
+  editor.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
+      if (e.key === 'b') { e.preventDefault(); insertMd('**', '**'); }
+      if (e.key === 'i') { e.preventDefault(); insertMd('*', '*'); }
+      if (e.key === 'k') { e.preventDefault(); insertLink(); }
+    }
+    // Tab 键插入两个空格
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      replaceSelection('  ');
+    }
+  });
+
+  // ── 清空 ──
+  function clearEditor() {
+    if (!editor.value.trim() || confirm('确定清空全部内容？')) {
+      editor.value = ''; render();
+    }
+  }
+
+  // ── 本地存储 ──
+  function saveLocal() {
+    localStorage.setItem('wechat_md_draft', editor.value);
+    toast('已保存到浏览器本地存储 ✓');
+  }
+  function loadLocal() {
+    const saved = localStorage.getItem('wechat_md_draft');
+    if (saved) { editor.value = saved; render(); toast('已加载本地存档 ✓'); }
+    else toast('暂无本地存档');
+  }
+
+  // ── 复制到公众号（富文本复制，兼容所有主流浏览器） ──
+  function copyForWechat() {
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = previewEl.innerHTML;
+    applyInlineStyles(wrapper, currentTheme, globalFontSize);
+
+    // 获取纯文本和 HTML 两个版本的复制内容
+    const htmlStr = wrapper.outerHTML;
+    const plainText = wrapper.textContent || '';
+
+    // 策略 1：现代 Clipboard API（可写 multipart，最稳妥）
+    if (navigator.clipboard && window.ClipboardItem) {
+      const htmlBlob = new Blob([htmlStr], { type: 'text/html' });
+      const textBlob = new Blob([plainText], { type: 'text/plain' });
+      const item = new ClipboardItem({
+        'text/html': htmlBlob,
+        'text/plain': textBlob,
+      });
+      navigator.clipboard.write([item]).then(() => {
+        toast('✓ 已复制！直接粘贴到公众号编辑器即可');
+      }).catch(() => {
+        domCopyFallback(wrapper);
+      });
+      return;
+    }
+
+    // 策略 2：DOM 选中 + execCommand（旧浏览器）
+    domCopyFallback(wrapper);
+  }
+
+  function domCopyFallback(wrapper) {
+    wrapper.style.position = 'fixed';
+    wrapper.style.left = '-9999px';
+    wrapper.style.top = '0';
+    wrapper.contentEditable = true;
+    document.body.appendChild(wrapper);
+
+    // 点击按钮后用户已有交互，execCommand 应当可用
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(wrapper);
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    let ok = false;
+    try {
+      ok = document.execCommand('copy');
+    } catch (e) { /* ignored */ }
+
+    selection.removeAllRanges();
+    document.body.removeChild(wrapper);
+
+    if (ok) {
+      toast('✓ 已复制！直接粘贴到公众号编辑器即可');
+    } else {
+      // 策略 3：最终兜底——弹出 HTML 让用户手动复制
+      document.getElementById('exportHtml').value = `<!-- 公众号排版工具导出 - 直接粘贴到公众号编辑器 -->\n${wrapper.outerHTML}`;
+      document.getElementById('exportModal').classList.add('show');
+      toast('⚠️ 浏览器限制自动复制，请手动复制弹窗中的 HTML 源码');
+    }
+  }
+
+  // 将样式内联（保证粘贴到公众号后样式保留）
+  function applyInlineStyles(root, theme, fontSize) {
+    const colors = {
+      default:  { h2border: '#07C160', h2bg: 'none', strong: '#07C160', bqbg: '#f0faf4', bqborder: '#07C160', th: '#07C160' },
+      dark:     { h2border: '#5B9CF6', h2bg: 'none', strong: '#5B9CF6', bqbg: '#252525', bqborder: '#5B9CF6', th: '#5B9CF6' },
+      blue:     { h2border: 'none',    h2bg: '#EBF2FF', strong: '#2255a4', bqbg: '#EBF2FF', bqborder: '#2255a4', th: '#2255a4' },
+      orange:   { h2border: '#FF6B35', h2bg: 'none', strong: '#FF6B35', bqbg: '#FFF5F0', bqborder: '#FF6B35', th: '#FF6B35' },
+      vue:      { h2border: 'none',    h2bg: 'none', strong: '#2c3e50', bqbg: 'rgba(66,185,131,0.08)', bqborder: '#42b983', th: '#f2f2f2', thColor: '#34495e' },
+      'vue-dark': { h2border: 'none', h2bg: 'none', strong: '#42b983', bqbg: 'rgba(66,185,131,0.08)', bqborder: '#42b983', th: 'hsl(0,0%,9%)', thColor: '#eeeeee' },
+      orangeheart: { h2border: 'none', h2bg: 'none', strong: 'rgb(239,112,96)', bqbg: '#fff9f9', bqborder: 'rgb(239,112,96)', th: '#f0f0f0', thColor: '#000' },
+    };
+    const c = colors[theme] || colors.default;
+    const isDark = theme === 'dark' || theme === 'vue-dark';
+    const isVue = theme === 'vue' || theme === 'vue-dark';
+    const isOrangeHeart = theme === 'orangeheart';
+    const textColor = isDark ? (isVue ? '#aaaaaa' : '#ccc') : (isVue ? '#34495e' : (isOrangeHeart ? '#000' : '#333'));
+    const bg = isDark ? (isVue ? '#1f1f1f' : '#1a1a1a') : '#fff';
+    const fontFamily = isVue
+      ? "'Source Sans Pro','PingFang SC','Microsoft YaHei',sans-serif"
+      : isOrangeHeart
+      ? "Optima-Regular,Optima,PingFangSC-light,'PingFang SC',Cambria,Cochin,Georgia,Times,serif"
+      : "-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif";
+    const f = fontSize;
+
+    root.style.cssText = `font-family:${fontFamily};background:${bg};padding:20px 16px;${isOrangeHeart?'word-break:break-word;word-wrap:break-word;text-align:left;':''}`;
+
+    root.querySelectorAll('h1').forEach(el => {
+      if (isOrangeHeart) {
+        el.style.cssText = `font-size:24px;font-weight:bold;color:#000;margin:1.2em 0 1em;`;
+      } else {
+        el.style.cssText = `font-size:${f+7}px;font-weight:700;color:${isDark?'#eeeeee':'#2c3e50'};margin:0 0 16px;line-height:1.3;padding-bottom:${isVue?'6px':'0'};`;
+      }
+    });
+    root.querySelectorAll('h2').forEach(el => {
+      if (isOrangeHeart) {
+        el.style.cssText = `font-size:21px;font-weight:bold;color:#000;margin:1.2em 0 1em;padding:0;border-bottom:2px solid rgb(239,112,96);display:inline-block;max-width:100%;`;
+      } else if (theme === 'blue') {
+        el.style.cssText = `font-size:${f+2}px;font-weight:700;color:#1a3c6e;margin:24px 0 10px;padding:6px 12px;background:#EBF2FF;border-radius:4px;`;
+      } else if (isVue) {
+        el.style.cssText = `font-size:${f+2}px;font-weight:700;color:${isDark?'#eeeeee':'#2c3e50'};margin:28px 0 12px;padding-bottom:8px;border-bottom:${isDark?'2px solid hsl(0,0%,20%)':'1px solid #ddd'};`;
+      } else {
+        el.style.cssText = `font-size:${f+2}px;font-weight:700;color:${isDark?'#fff':'#111'};margin:24px 0 10px;padding-left:10px;border-left:3px solid ${c.h2border};`;
+      }
+    });
+    root.querySelectorAll('h3').forEach(el => {
+      if (isOrangeHeart) {
+        el.style.cssText = `font-size:21px;font-weight:bold;color:#000;margin:1.2em 0 1em;`;
+      } else {
+        el.style.cssText = `font-size:${f}px;font-weight:700;color:${isDark?'#dddddd':'#2c3e50'};margin:20px 0 8px;`;
+      }
+    });
+    root.querySelectorAll('p').forEach(el => {
+      if (isOrangeHeart) {
+        el.style.cssText = `font-size:16px;line-height:1.6;color:#000;margin:0;padding:8px 0;`;
+      } else {
+        el.style.cssText = `font-size:${f}px;line-height:1.9;color:${textColor};margin:0 0 12px;`;
+      }
+    });
+    root.querySelectorAll('strong').forEach(el => {
+      el.style.cssText = `color:${c.strong};font-weight:700;`;
+    });
+    root.querySelectorAll('blockquote').forEach(el => {
+      if (isOrangeHeart) {
+        el.style.cssText = `border-left:3px solid rgb(239,112,96);background:#fff9f9;padding:10px 10px 10px 20px;margin:20px 0;font-size:14px;color:#6a737d;`;
+      } else {
+        el.style.cssText = `border-left:3px solid ${c.bqborder};background:${c.bqbg};padding:10px 14px;margin:12px 0;font-size:14px;color:${isDark?'#aaa':'#555'};`;
+      }
+    });
+    root.querySelectorAll('ul,ol').forEach(el => {
+      el.style.cssText = `padding-left:${isOrangeHeart?'25px':'24px'};margin:${isOrangeHeart?'8px 0':'8px 0 12px'};${isOrangeHeart?'color:#000;':''}`;
+    });
+    root.querySelectorAll('li').forEach(el => {
+      el.style.cssText = `font-size:${isOrangeHeart?'16px':f}px;line-height:${isOrangeHeart?'1.7':'1.9'};color:${isOrangeHeart?'#000':textColor};margin-bottom:${isOrangeHeart?'5px':'4px'};${isOrangeHeart?'margin-top:5px;font-weight:500;':''}`;
+    });
+    root.querySelectorAll('img').forEach(el => {
+      el.style.cssText = isOrangeHeart
+        ? `max-width:100%;display:block;margin:0 auto;`
+        : `max-width:100%;border-radius:6px;display:block;margin:12px auto;`;
+    });
+    root.querySelectorAll('table').forEach(el => {
+      el.style.cssText = `width:100%;border-collapse:collapse;font-size:${isOrangeHeart?'16px':'13px'};margin:12px 0;${isOrangeHeart?'text-align:left;':''}`;
+    });
+    root.querySelectorAll('th').forEach(el => {
+      if (isOrangeHeart) {
+        el.style.cssText = `border:1px solid #ccc;background:#f0f0f0;font-weight:bold;padding:5px 10px;color:#000;text-align:left;`;
+      } else {
+        const thBg = c.th;
+        const thFg = c.thColor || '#fff';
+        el.style.cssText = `background:${thBg};color:${thFg};padding:6px 13px;text-align:left;font-weight:700;border:${isVue?(isDark?'transparent':'1px solid #dfe2e5'):'none'};`;
+      }
+    });
+    root.querySelectorAll('td').forEach(el => {
+      if (isOrangeHeart) {
+        el.style.cssText = `border:1px solid #ccc;padding:5px 10px;color:#000;text-align:left;`;
+      } else {
+        el.style.cssText = `border:${isVue?(isDark?'2px solid #1d1d1d':'1px solid #dfe2e5'):(isDark?`1px solid #333`:`1px solid #eee`)};padding:${isVue?'6px 13px':'8px 10px'};color:${textColor};`;
+      }
+    });
+    root.querySelectorAll('code').forEach(el => {
+      if (el.parentElement.tagName !== 'PRE') {
+        if (isOrangeHeart) {
+          el.style.cssText = `background:rgba(27,31,35,.05);padding:2px 4px;border-radius:4px;margin:0 2px;font-size:14px;color:rgb(239,112,96);font-family:'Operator Mono',Consolas,Monaco,Menlo,monospace;`;
+        } else {
+          const codeBg = isDark ? (isVue ? 'rgba(0,0,0,0.2)' : '#2d2d2d') : '#f8f8f8';
+          const codeColor = isDark ? (isVue ? '#f3b37f' : '#e06c75') : (isVue ? '#e96900' : '#e83e5a');
+          el.style.cssText = `background:${codeBg};padding:2px 5px;border-radius:2px;font-size:13px;color:${codeColor};font-family:${isVue?"'Fira Code',Consolas,monospace":'Consolas,monospace'};${isDark&&isVue?'font-weight:bold;':''}`;
+        }
+      }
+    });
+    root.querySelectorAll('pre').forEach(el => {
+      if (isOrangeHeart) {
+        el.style.cssText = `background:#292d3e;border-radius:4px;padding:14px;overflow-x:auto;margin:12px 0;`;
+      } else {
+        const preBg = isDark ? (isVue ? 'hsl(0,0%,10%)' : '#2d2d2d') : (isVue ? '#f8f8f8' : '#f6f8fa');
+        el.style.cssText = `background:${preBg};border-radius:${isVue?'3px':'6px'};padding:14px;overflow-x:auto;margin:12px 0;${isVue?`border:1px solid ${isDark?'hsl(0,0%,11%)':'#f4f4f4'};`:''}`;
+      }
+    });
+    root.querySelectorAll('pre code').forEach(el => {
+      if (isOrangeHeart) {
+        el.style.cssText = `background:none;padding:0;color:#a6accd;font-size:13px;margin:0;`;
+      }
+    });
+    root.querySelectorAll('hr').forEach(el => {
+      el.style.cssText = `border:none;${isVue?`height:2px;background:${isDark?'hsl(0,0%,18%)':'#e7e7e7'};`:`border-top:1px solid ${isDark?'#333':'#eee'};`}margin:20px 0;`;
+    });
+    root.querySelectorAll('a').forEach(el => {
+      el.style.cssText = isOrangeHeart
+        ? `color:rgb(239,112,96);text-decoration:none;font-weight:bold;border-bottom:1px solid rgb(239,112,96);`
+        : `color:${isVue?'#42b983':c.strong};text-decoration:none;${isVue?'font-weight:600;':''}`;
+    });
+  }
+
+  // ── 查看/复制 HTML ──
+  function showExportModal() {
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = previewEl.innerHTML;
+    applyInlineStyles(wrapper, currentTheme, globalFontSize);
+    const html = `<!-- 公众号排版工具导出 - 直接粘贴到公众号编辑器 -->\n${wrapper.outerHTML}`;
+    document.getElementById('exportHtml').value = html;
+    document.getElementById('exportModal').classList.add('show');
+  }
+  function closeModal() { document.getElementById('exportModal').classList.remove('show'); }
+  function copyExportHtml() {
+    const ta = document.getElementById('exportHtml');
+    ta.select();
+    navigator.clipboard.writeText(ta.value).then(() => {
+      toast('✓ HTML 已复制');
+      closeModal();
+    }).catch(() => {
+      document.execCommand('copy');
+      toast('✓ HTML 已复制');
+      closeModal();
+    });
+  }
+
+  // ── Toast 提示 ──
+  function toast(msg, duration = 2500) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), duration);
+  }
+
+  // ── 模板 ──
+  function loadTemplate() {
+    const tpl = `# 文章标题：这里写大标题
+
+> 这是一段引用内容，适合放在文章开头作为导语。可以是名人名言、也可以是核心主旨。
+
+## 第一节：背景介绍
+
+正文内容写在这里。微信公众号的排版讲究**层次清晰**、*排版美观*。合理使用标题、加粗、引用等元素可以大幅提升阅读体验。
+
+本工具支持以下功能：
+- 实时 Markdown 预览
+- 多套主题切换
+- 一键复制到公众号编辑器
+- 内联样式输出，样式不丢失
+
+## 第二节：技术细节
+
+### 代码示例
+
+\`\`\`javascript
+function hello(name) {
+  console.log(\`Hello, \${name}!\`);
+}
+hello('公众号读者');
+\`\`\`
+
+行内代码示例：使用 \`Ctrl+B\` 可以快速加粗文字。
+
+## 第三节：数据对比
+
+| 工具 | 支持主题 | 实时预览 | 导出格式 |
+|------|----------|----------|----------|
+| 本工具 | ✅ 4套 | ✅ | HTML / 富文本 |
+| 其他工具 | 部分支持 | 部分 | 有限 |
+
+## 总结
+
+> :::info 这是一条提示信息，使用 \`> :::info 内容\` 语法
+
+感谢阅读！欢迎关注我们的公众号，获取更多优质内容。
+
+---
+
+*本文由微信公众号排版工具生成*`;
+    editor.value = tpl;
+    render();
+    toast('示例模板已加载 ✓');
+  }
+
+  // ── 初始化 ──
+  window.addEventListener('click', e => {
+    if (e.target === document.getElementById('exportModal')) closeModal();
+  });
+
+  // 页面加载时尝试读取本地存档，否则加载模板
+  const saved = localStorage.getItem('wechat_md_draft');
+  if (saved && saved.trim()) {
+    editor.value = saved;
+    render();
+  } else {
+    loadTemplate();
+  }
+</script>
+</body>
+</html>
